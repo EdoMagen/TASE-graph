@@ -1418,6 +1418,15 @@ function draw() {
   const searching = searchHits.size > 0;
   const pinning   = pinnedNode !== null;
 
+  // Cache projected positions once per frame to avoid re-computing in every
+  // loop iteration (links reference the same node objects as the nodes array).
+  const projCache = new Map(); // nodeId → {sx, sy, ds, depth}
+  for (const n of nodes) {
+    if (!isVisible(n)) continue;
+    const [wx, wy, wz] = nodeWorldPos(n);
+    projCache.set(n.id, projectPoint(wx, wy, wz));
+  }
+
   // Returns true when this node is in the highlighted cluster
   function inCluster(n) {
     if (!pinning) return false;
@@ -2162,13 +2171,26 @@ function positionTip(mx, my) {
 }
 
 // ── BOOT ─────────────────────────────────────────────────────
-document.getElementById('spin').classList.remove('hidden');
-setTimeout(() => {
-  computeLayout();
-  document.getElementById('spin').classList.add('hidden');
-  needsDraw = true;
-  requestAnimationFrame(t => { lastFrame = t; tick(t); });
-}, 20);
+(function boot() {
+  const spinEl = document.getElementById('spin');
+  // Give the browser one paint cycle so the spinner animation starts
+  // before the heavy synchronous computation blocks the thread.
+  setTimeout(() => {
+    try {
+      computeLayout();
+    } catch (err) {
+      console.error('computeLayout failed:', err);
+      if (spinEl) {
+        spinEl.querySelector('.s').style.display = 'none';
+        spinEl.innerHTML += '<br><span style="color:#ef5350;font-size:11px">Error: ' + err.message + '</span>';
+      }
+      return;
+    }
+    if (spinEl) spinEl.classList.add('hidden');
+    needsDraw = true;
+    requestAnimationFrame(t => { lastFrame = t; tick(t); });
+  }, 60);
+})();
 </script>
 </body>
 </html>
